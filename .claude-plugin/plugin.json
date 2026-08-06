@@ -1,0 +1,10 @@
+{
+  "name": "buzzcut",
+  "version": "0.1.0",
+  "description": "Находит и вырезает секреты, осевшие в транскриптах Claude Code. Показывает, какие из найденных ключей ещё живые.",
+  "author": {
+    "name": "akzh4n"
+  },
+  "homepage": "https://github.com/akzh4n/buzzcut",
+  "keywords": ["security", "secrets", "credentials", "transcripts", "redaction"]
+}

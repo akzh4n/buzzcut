@@ -1,0 +1,15 @@
+{
+  "PostToolUse": [
+    {
+      "matcher": "Bash|Read|Grep|Glob|BashOutput",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/guard.py\"",
+          "timeout": 5,
+          "statusMessage": "buzzcut: проверка вывода на секреты"
+        }
+      ]
+    }
+  ]
+}
