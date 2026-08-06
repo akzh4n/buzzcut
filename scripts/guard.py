@@ -50,9 +50,9 @@ def handle(event):
     if n == 0:
         return None
 
-    plural = "секрет" if n == 1 else "секрета" if n < 5 else "секретов"
+    plural = "secret" if n == 1 else "secrets"
     return {
-        "systemMessage": f"✂ buzzcut: вырезано {n} {plural} из вывода {event.get('tool_name', '?')}",
+        "systemMessage": f"✂ buzzcut: {n} {plural} cut from {event.get('tool_name', '?')} output",
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "updatedToolOutput": updated,

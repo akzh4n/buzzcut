@@ -34,7 +34,7 @@ def clean_file(path, backup_dir, dry_run=False):
     Файл переписывается только если что-то нашлось, и только после бэкапа.
     """
     if not backup_dir and not dry_run:
-        raise ValueError("clean_file требует backup_dir: без бэкапа не пишем")
+        raise ValueError("clean_file needs backup_dir: no backup, no write")
 
     lines, total = [], 0
     with open(path, encoding="utf-8", errors="replace") as fh:

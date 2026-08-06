@@ -1,15 +1,15 @@
 ---
-description: Вырезать секреты из транскриптов, с бэкапом
+description: Cut secrets out of the transcripts, with a mandatory backup
 ---
 
-Всегда начинай с сухого прогона:
+Always start with a dry run:
 
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/buzzcut.py" clean --dry-run`
 
-Покажи, сколько вхождений и файлов будет затронуто, и дождись подтверждения пользователя. Только потом запускай без `--dry-run`.
+Show how many occurrences and files would be touched, and wait for the user to confirm. Only then run it without `--dry-run`.
 
-Аргументы, если пользователь просил ограничить объём:
-- `--project <имя>` — только один проект
-- `--backup <путь>` — куда положить копии (по умолчанию `~/.claude/projects.buzzcut-backup`)
+Arguments, if the user asked to limit the scope:
+- `--project <name>` — one project only (substring match)
+- `--backup <path>` — where to put the copies (default `~/.claude/projects.buzzcut-backup`)
 
-Что важно сказать пользователю: чистка убирает значения из истории, но **не отменяет утечку**. Если ключ уже попал в транскрипт, считать его скомпрометированным и ротировать. `/buzzcut:check` покажет, какие из них ещё живые.
+What the user needs to hear: cleaning removes the values from the history, but it **does not undo the leak**. A key that reached a transcript should be treated as compromised and rotated. `/buzzcut:check` tells you which ones still matter.

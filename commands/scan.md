@@ -1,11 +1,11 @@
 ---
-description: Найти секреты, осевшие в транскриптах Claude Code (read-only)
+description: Find credentials left behind in Claude Code transcripts (read-only)
 ---
 
-Запусти `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/buzzcut.py" scan` и покажи вывод пользователю как есть.
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/buzzcut.py" scan` and show the output to the user as it is.
 
-Команда только читает `~/.claude/projects` и ничего не меняет. Значения ключей она не печатает — только типы, проекты и счётчики.
+The command only reads `~/.claude/projects` and changes nothing. It never prints key values — types, projects and counts only.
 
-**Скан обходит все проекты, а не текущий.** Так и задумано: транскрипты лежат глобально, и ключ, утёкший в соседнем проекте, живой ровно так же. Если пользователь спрашивает про один проект — добавь `--project ИМЯ` (подстрока имени; воркtree подхватываются вместе с основным проектом). Полный прогон по большому `~/.claude/projects` занимает пару минут.
+**The scan covers every project, not the current one.** That is deliberate: transcripts live globally, and a key leaked in a neighbouring project is just as live. If the user asks about one project, add `--project NAME` (substring match; worktrees come along with their parent project). A full pass over a large `~/.claude/projects` takes a couple of minutes.
 
-После вывода: если найдено больше нуля, коротко скажи, что дальше есть `/buzzcut:check` (проверить, какие ключи ещё живые) и `/buzzcut:clean` (вырезать из файлов). Не запускай их сам.
+Afterwards, if anything was found, briefly mention that `/buzzcut:check` (which of those keys still work) and `/buzzcut:clean` (cut them out of the files) exist. Do not run either of them yourself.

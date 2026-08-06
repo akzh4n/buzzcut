@@ -1,7 +1,7 @@
 {
   "name": "buzzcut",
   "version": "0.1.1",
-  "description": "Находит и вырезает секреты, осевшие в транскриптах Claude Code. Показывает, какие из найденных ключей ещё живые.",
+  "description": "Finds credentials left behind in Claude Code transcripts, tells you which ones still work, and redacts secrets from tool output before the model sees them.",
   "author": {
     "name": "akzh4n"
   },
