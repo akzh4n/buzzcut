@@ -29,7 +29,20 @@ PROVIDER_PATTERNS = [
 # Структурные формы — секрет узнаётся по обрамлению, а не по себе.
 JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
 URL_CREDS = re.compile(r"://[^\s:/@]+:([^\s:/@]{6,})@")
-ENV_ASSIGN = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\s*=\s*[\"']?([A-Za-z0-9_\-./+]{16,})")
+ENV_ASSIGN = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\s*=\s*(?:\\?[\"'])?([A-Za-z0-9_\-./+]{16,})")
+
+# В JSONL перевод строки хранится как два символа `\` и `n`, а не как перевод
+# строки. Дамп `cat .env` лежит одной строкой: `A=1\nB=2\nC=3`. Для регулярок
+# это делает `1\nB` одним словом — граница пропадает, и всё после первой
+# переменной теряется (на 4306 файлах так пропадали 22 ключа из 139).
+#
+# Замена строго той же длины (2 символа → 2 пробела): смещения находок обязаны
+# оставаться валидными для ИСХОДНОЙ строки, иначе `clean` вырежет не тот кусок.
+ESCAPED_WHITESPACE = re.compile(r"\\[nrt]")
+
+
+def _normalize(text):
+    return ESCAPED_WHITESPACE.sub("  ", text)
 
 # Ворота по имени переменной. Без них `WT2=/path/DEV-604` и `HEAD=<sha>`
 # неотличимы от `CORE_INTERNAL_SECRET=<hex>`: значения устроены одинаково.
@@ -38,6 +51,13 @@ SECRET_NAME = re.compile(
     r"SECRET|TOKEN|PASSWORD|PASSWD|_PWD|API_?KEY|ACCESS_?KEY|PRIVATE|"
     r"CREDENTIAL|AUTH|SIGNING|CLIENT_ID|CLIENT_KEY|SALT|DSN|_KEY\b|^KEY$"
 )
+
+# Публичные по построению: сборщики фронтенда вшивают такие переменные в бандл,
+# значение и так уезжает в браузер. Без этих ворот `NEXT_PUBLIC_..._API_KEY`
+# проходил по слову `API_KEY` внутри, и хук резал бы его у агента, который
+# правит фронтовый конфиг. Провайдерских токенов ворота не касаются: там
+# форма самодостаточна, и попадание такого ключа в бандл — уже инцидент.
+PUBLIC_PREFIX = re.compile(r"^(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|PUBLIC)_")
 
 MIN_SECRET_LEN = 16
 MIN_ENTROPY = 3.0
@@ -82,6 +102,10 @@ def find_secrets(text):
     if not text:
         return []
 
+    # Ищем по нормализованной копии, значения режем из оригинала: длина
+    # совпадает посимвольно, поэтому смещения годятся для обоих.
+    probe = _normalize(text)
+
     found = []
     taken = []
 
@@ -92,17 +116,18 @@ def find_secrets(text):
         return True
 
     for kind, rx in PROVIDER_PATTERNS:
-        for m in rx.finditer(text):
+        for m in rx.finditer(probe):
             if claim(m.start(), m.end()):
-                found.append(Finding(kind, m.start(), m.end(), m.group(0)))
+                found.append(Finding(kind, m.start(), m.end(), text[m.start():m.end()]))
 
     for kind, rx in (("jwt", JWT), ("url_credentials", URL_CREDS), ("env_secret", ENV_ASSIGN)):
-        for m in rx.finditer(text):
+        for m in rx.finditer(probe):
             # у JWT значимо всё совпадение, у остальных — только группа значения
             if kind == "jwt":
                 start, end = m.span()
             elif kind == "env_secret":
-                if not SECRET_NAME.search(m.group(1)):
+                name = m.group(1)
+                if PUBLIC_PREFIX.match(name) or not SECRET_NAME.search(name):
                     continue
                 start, end = m.span(2)
             else:

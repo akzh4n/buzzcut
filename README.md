@@ -6,13 +6,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/stars/akzh4n/buzzcut?style=flat-square&color=111111&label=stars" alt="Stars">
-  <img src="https://img.shields.io/badge/tests-122-111111?style=flat-square" alt="122 tests">
+  <img src="https://img.shields.io/badge/tests-153-111111?style=flat-square" alt="153 tests">
   <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/badge/deps-none-111111?style=flat-square" alt="No dependencies">
 </p>
 
 <p align="center">
-  <strong>116 live keys &middot; 1,065 occurrences &middot; 234 files</strong><br>
+  <strong>128 credentials &middot; 1,158 occurrences &middot; 242 files</strong><br>
   <sub>Found on one working developer machine, accumulated over two months of normal use.
   Nobody pasted a key anywhere. The agent ran <code>cat .env</code> to debug something, and
   Claude Code wrote the output to disk — where it stays forever.
@@ -36,17 +36,17 @@ Anthropic knows. Two issues report it with real incidents — [#58043](https://g
 /plugin install buzzcut@buzzcut
 ```
 
-Just want to look first? Nothing is installed, nothing is modified:
+Just want to look first? No install, no plugin, no dependencies — Python 3 is all you need:
 
 ```
-npx buzzcut scan
+git clone https://github.com/akzh4n/buzzcut && python3 buzzcut/scripts/buzzcut.py scan
 ```
 
 ## What it does
 
 | | |
 |---|---|
-| `/buzzcut:scan` | Reports what's in your transcripts. Read-only. Never prints key values — types, projects and counts only, so you can paste the output into a ticket |
+| `/buzzcut:scan` | Reports what's in your transcripts. Read-only. Never prints key values — types, projects and counts only, so you can paste the output into a ticket. Covers every project by default (transcripts are global); narrow with `--project` |
 | `/buzzcut:check` | **Which of those keys still work.** Asks each provider over a read-only endpoint. Network access, explicit consent required |
 | `/buzzcut:clean` | Cuts the values out of the files. Mandatory backup, `--dry-run` first |
 | hook | Redacts secrets from tool output *before the model sees them* — so they never reach the context or the disk |
@@ -55,16 +55,18 @@ npx buzzcut scan
 
 Every other tool stops at *"this string looks like a key."*
 
-That's the wrong end of the problem. **1,065 matches** is noise you scroll past. **"Three keys an attacker could use right now"** is an incident you act on. `buzzcut check` asks the provider.
+That's the wrong end of the problem. **1,158 matches** is noise you scroll past. **"Three keys an attacker could use right now"** is an incident you act on. `buzzcut check` asks the provider.
+
+The report it produces (shape of the output — `check` makes network calls, so it only runs on explicit consent):
 
 ```
   LIVE — rotate now
     OpenAI          sk-pro…Xe4     flowly
     GitHub PAT      ghp_4m…kM2     flowly
 
-  DEAD — 20, already rotated, just clean them out
+  DEAD — already rotated, just clean them out
 
-  YOUR CALL — 91
+  YOUR CALL
     private key, database URLs, internal service secrets
 ```
 
@@ -83,13 +85,25 @@ The command still ran. The agent got the file it asked for, minus the values. It
 
 ## What this actually found
 
-Numbers above come from a real machine: 4,306 transcripts, 1.9 GB, roughly two months of daily agent use across seven projects.
+Numbers above come from a real machine: 4,308 transcripts, 1.9 GB, roughly two months of daily agent use across seven projects. They exclude buzzcut's own project directory, whose transcripts contain this repository's test fixtures rather than anybody's leaks.
 
-A naive scanner reports **1,585** hits on that data. That number is a lie: 60% of it is `PYTHONPATH=/a/b`, `HEAD=<sha>`, `WT=/path/DEV-604` — shell variables holding paths and git refs. A redaction hook that cuts those breaks your agent on every step.
+**A naive scanner reports 373 unique matches on that data.** Two thirds of that is noise: `PYTHONPATH=/a/b`, `HEAD=<sha>`, `WT=/path/DEV-604` — shell variables holding paths and git refs, structurally identical to a secret. A redaction hook that cuts those breaks your agent on every step.
 
-buzzcut gates `ENV`-shaped findings on the *variable name*, which drops the count to **1,061 across 116 unique keys** — and what survives is `POSTGRES_PASSWORD`, `TIKTOK_CLIENT_SECRET`, `COOKIES_ENCRYPTION_KEY`, `ALTEGIO_WEBHOOK_TOKEN`. Real ones.
+buzzcut gates `ENV`-shaped findings on the *variable name* and excludes prefixes that are public by construction (`NEXT_PUBLIC_`, `VITE_`, `REACT_APP_`, `EXPO_PUBLIC_` — bundlers ship those to the browser anyway). That leaves **128 unique keys across 1,158 occurrences**, and what survives is `POSTGRES_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `JWT_SECRET`, `R2_SECRET_ACCESS_KEY`, `TIKTOK_CLIENT_SECRET`. Real ones.
 
-False positives cost more than misses here, so the test suite has more cases asserting what must **not** be cut than what must.
+False positives cost more than misses here — a hook that cuts the wrong string hands your agent corrupted data and it starts debugging a problem that does not exist. So the test suite has more cases asserting what must **not** be cut than what must.
+
+### One detail that costs other scanners a third of the findings
+
+In a `.jsonl` transcript a newline is stored as the two characters `\` and `n`, not as a newline. So a `cat .env` dump lives on one physical line:
+
+```
+{"stdout":"OPENAI_API_KEY=sk-proj-…\nDB_PASSWORD=…\nAWS_SECRET_ACCESS_KEY=…"}
+```
+
+To a regex, `…\nDB_PASSWORD` is a single word — the word boundary is gone, and everything after the *first* variable silently disappears. Grepping these files naively finds the first secret in each dump and misses the rest. On this corpus that was 38 keys, including an AWS secret access key and a Postgres password.
+
+buzzcut normalises those escapes before matching, using a **replacement of identical length** so match offsets stay valid against the original bytes — `clean` edits the file in place by offset, and a shifted offset would corrupt the line instead of redacting it. That invariant has its own test.
 
 ## Limits
 
@@ -100,7 +114,10 @@ False positives cost more than misses here, so the test suite has more cases ass
 ## Development
 
 ```
-python3 -m pytest tests/ -q     # 122 tests, no dependencies
+python3 -m pytest tests/ -q        # 86 tests — the plugin
+python3 -m pytest research/ -q     # 67 tests — the measurement code behind the numbers above
 ```
+
+No dependencies, standard library only.
 
 MIT.

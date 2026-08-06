@@ -115,6 +115,52 @@ class TestMustNotMatch:
         assert find_secrets("commit f519c397a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6") == []
 
 
+class TestEscapedNewlines:
+    """В JSONL переводы строк хранятся экранированными: дамп `cat .env`
+    лежит одной строкой как `A=1\\nB=2\\nC=3`. Сканер читает строку сырой,
+    поэтому `\\n` склеивает конец значения с началом следующего имени и
+    ломает границу слова — всё после первой переменной терялось.
+    Прогон по 4306 файлам: так пропадали 22 ключа из 139.
+    """
+
+    # Ровно как строка лежит в файле: структурные кавычки настоящие,
+    # экранирован только перевод строки внутри значения.
+    DUMP = (
+        '{"stdout":"OPENAI_API_KEY=' + FAKE["openai"] +
+        r"\nDB_PASSWORD=7Hq2Wz9Kx4Lm8Pv3Nt6Rb1Yc5Fd0Gj"
+        r"\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYQz3Vd8Nk" + '"}'
+    )
+
+    def test_finds_every_variable_in_the_dump(self):
+        assert kinds(self.DUMP) == ["env_secret", "env_secret", "openai"]
+
+    def test_escaped_tab_and_cr_are_boundaries_too(self):
+        assert kinds(r"FOO=bar\tDB_PASSWORD=7Hq2Wz9Kx4Lm8Pv3Nt6Rb1Yc5Fd0Gj") == ["env_secret"]
+        assert kinds(r"FOO=bar\rAPI_TOKEN=9Kx4Lm8Pv3Nt6Rb1Yc5Fd0GjQw2Ea") == ["env_secret"]
+
+    def test_offsets_stay_valid_against_the_original_text(self):
+        """Единственный инвариант, который нельзя нарушить: `clean` режет по
+        смещениям в исходной строке. Нормализация обязана сохранять длину."""
+        for f in find_secrets(self.DUMP):
+            assert self.DUMP[f.start:f.end] == f.value
+
+    def test_redaction_keeps_the_line_json_parseable(self):
+        import json
+        out = redact(self.DUMP)
+        assert FAKE["openai"] not in out
+        assert "7Hq2Wz9Kx4Lm8Pv3Nt6Rb1Yc5Fd0Gj" not in out
+        assert json.loads(out)["stdout"].count("\n") == 2
+
+    def test_escape_sequence_is_not_swallowed_into_a_value(self):
+        out = redact(self.DUMP)
+        assert out.count(r"\n") == 2
+
+    def test_quoted_value_survives_json_escaping(self):
+        """`KEY="value"` в .env после укладки в JSON выглядит как `KEY=\\"value\\"`.
+        Провайдерские токены переживают это сами, ENV-присваивания — нет."""
+        assert kinds(r"DB_PASSWORD=\"7Hq2Wz9Kx4Lm8Pv3Nt6Rb1Yc5Fd0Gj\"") == ["env_secret"]
+
+
 class TestRedact:
     def test_replaces_only_the_value(self):
         out = redact(f"OPENAI_API_KEY={FAKE['openai']}")
@@ -164,3 +210,33 @@ class TestEnvNameGate:
 
     def test_password_var_is_a_secret(self):
         assert kinds("DB_PASSWORD=7Hq2Wz9Kx4Lm8Pv3Nt6Rb1Yc5Fd0Gj") == ["env_secret"]
+
+
+class TestPublicByConvention:
+    """Сборщики фронтенда вшивают переменные с этими префиксами прямо в бандл —
+    они уезжают в браузер по построению. `NEXT_PUBLIC_..._API_KEY` проходил
+    ворота по имени из-за `API_KEY` внутри, и хук вырезал бы его из вывода
+    у агента, который чинит фронтовый конфиг. Пропуск здесь ничего не стоит:
+    значение и так публично.
+    """
+
+    def test_next_public(self):
+        assert find_secrets("NEXT_PUBLIC_AMPLITUDE_API_KEY=a1B2c3D4e5F6g7H8i9J0k1L2m3N4") == []
+
+    def test_vite(self):
+        assert find_secrets("VITE_SUPABASE_ANON_KEY=a1B2c3D4e5F6g7H8i9J0k1L2m3N4") == []
+
+    def test_react_app(self):
+        assert find_secrets("REACT_APP_API_KEY=a1B2c3D4e5F6g7H8i9J0k1L2m3N4") == []
+
+    def test_expo_public(self):
+        assert find_secrets("EXPO_PUBLIC_API_KEY=a1B2c3D4e5F6g7H8i9J0k1L2m3N4") == []
+
+    def test_the_same_name_without_the_prefix_is_still_a_secret(self):
+        """Ворота срабатывают на префиксе, а не на слове PUBLIC где угодно."""
+        assert kinds("AMPLITUDE_API_KEY=a1B2c3D4e5F6g7H8i9J0k1L2m3N4") == ["env_secret"]
+
+    def test_provider_tokens_are_not_excused_by_the_prefix(self):
+        """Настоящий ключ провайдера остаётся находкой, где бы он ни лежал:
+        форма самодостаточна, и попадание его в бандл — уже инцидент."""
+        assert kinds(f"NEXT_PUBLIC_KEY={FAKE['openai']}") == ["openai"]

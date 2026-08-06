@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cleaner import clean_file                      # noqa: E402
 from detect import find_secrets                     # noqa: E402
 from liveness import DEAD, LIVE, MANUAL, check_key  # noqa: E402
-from scanner import DEFAULT_ROOT, mask, project_of, scan, transcript_paths  # noqa: E402
+from scanner import (DEFAULT_ROOT, MIN_LINE, mask, maybe_secret,  # noqa: E402
+                     project_of, scan, shorten_projects, transcript_paths)
 
 KIND_RU = {
     "openai": "OpenAI", "anthropic": "Anthropic", "github": "GitHub PAT",
@@ -30,11 +31,29 @@ def _human_bytes(n):
     return f"{n / 1e9:.2f} ГБ" if n >= 1e9 else f"{n / 1e6:.0f} МБ"
 
 
+def _progress(done, total):
+    """Полоса в stderr. Под Claude Code вывод команды не стримится — там её
+    просто не видно, и это нормально: она для запуска из терминала, где
+    двухминутная тишина выглядит как зависание."""
+    if not sys.stderr.isatty():
+        return
+    if done % 50 and done != total:
+        return
+    sys.stderr.write(f"\r  сканирую… {done}/{total} · {100 * done // total}%")
+    if done == total:
+        sys.stderr.write("\r" + " " * 40 + "\r")
+    sys.stderr.flush()
+
+
 def cmd_scan(args):
-    r = scan(args.root)
+    r = scan(args.root, project=args.project, on_progress=_progress)
+    scope = f"{args.root}  ·  фильтр: {args.project}" if args.project else args.root
     print()
-    print(f"  buzzcut — {args.root}")
+    print(f"  buzzcut — {scope}")
     print(f"  {r['files']} файлов · {_human_bytes(r['bytes'])}")
+    if not args.project:
+        print("  (все проекты Claude Code, не только текущий — "
+              "сузить: buzzcut scan --project ИМЯ)")
     print()
     if not r["occurrences"]:
         print("  Секретов не найдено.\n")
@@ -44,8 +63,10 @@ def cmd_scan(args):
           f"{r['files_hit']} файлов")
     print()
     print("  ПО ПРОЕКТАМ")
-    for proj, occ, uniq in r["by_project"][:10]:
-        print(f"    {proj[:46]:<46}{uniq:>4} ключей {occ:>6} вхожд.")
+    top = r["by_project"][:10]
+    labels = shorten_projects([p for p, _, _ in top], width=46)
+    for proj, occ, uniq in top:
+        print(f"    {labels[proj]:<46}{uniq:>4} ключей {occ:>6} вхожд.")
     print()
     print("  ПО ТИПАМ")
     for kind, occ, uniq in r["by_kind"]:
@@ -57,10 +78,13 @@ def cmd_scan(args):
     return 0
 
 
-def _collect_unique(root):
+def _collect_unique(root, project=None):
     """{digest: (kind, value, project)} — значения держим только в памяти."""
     out = {}
-    for path in transcript_paths(root):
+    paths = transcript_paths(root)
+    if project:
+        paths = [p for p in paths if project in project_of(p, root)]
+    for path in paths:
         try:
             fh = open(path, encoding="utf-8", errors="replace")
         except OSError:
@@ -68,7 +92,7 @@ def _collect_unique(root):
         proj = project_of(path, root)
         with fh:
             for line in fh:
-                if len(line) < 40:
+                if len(line) < MIN_LINE or not maybe_secret(line):
                     continue
                 for f in find_secrets(line):
                     d = hashlib.sha256(f.value.encode()).hexdigest()[:16]
@@ -77,7 +101,7 @@ def _collect_unique(root):
 
 
 def cmd_check(args):
-    found = _collect_unique(args.root)
+    found = _collect_unique(args.root, project=args.project)
     if not found:
         print("\n  Секретов не найдено.\n")
         return 0
@@ -146,15 +170,20 @@ def main(argv=None):
     ap.add_argument("--root", default=DEFAULT_ROOT)
     sub = ap.add_subparsers(dest="cmd")
 
-    sub.add_parser("scan", help="отчёт, ничего не меняет").set_defaults(fn=cmd_scan)
+    PROJECT_HELP = "ограничить проектами, чьё имя содержит эту подстроку"
+
+    s = sub.add_parser("scan", help="отчёт, ничего не меняет")
+    s.add_argument("--project", help=PROJECT_HELP)
+    s.set_defaults(fn=cmd_scan)
 
     c = sub.add_parser("check", help="какие ключи ещё живые (сеть)")
     c.add_argument("--yes", action="store_true", help="подтвердить сетевые запросы")
+    c.add_argument("--project", help=PROJECT_HELP)
     c.set_defaults(fn=cmd_check)
 
     cl = sub.add_parser("clean", help="вырезать секреты из транскриптов")
     cl.add_argument("--dry-run", action="store_true")
-    cl.add_argument("--project", help="ограничить одним проектом")
+    cl.add_argument("--project", help=PROJECT_HELP)
     cl.add_argument("--backup", help="куда класть бэкап")
     cl.set_defaults(fn=cmd_clean)
 
