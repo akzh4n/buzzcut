@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/stars/akzh4n/buzzcut?style=flat-square&color=111111&label=stars" alt="Stars">
-  <img src="https://img.shields.io/badge/tests-153-111111?style=flat-square" alt="153 tests">
+  <img src="https://img.shields.io/badge/tests-161-111111?style=flat-square" alt="161 tests">
   <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/badge/deps-none-111111?style=flat-square" alt="No dependencies">
 </p>
@@ -114,7 +114,7 @@ buzzcut normalises those escapes before matching, using a **replacement of ident
 ## Development
 
 ```
-python3 -m pytest tests/ -q        # 86 tests — the plugin
+python3 -m pytest tests/ -q        # 94 tests — the plugin
 python3 -m pytest research/ -q     # 67 tests — the measurement code behind the numbers above
 ```
 

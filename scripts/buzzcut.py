@@ -31,18 +31,24 @@ def _human_bytes(n):
     return f"{n / 1e9:.2f} GB" if n >= 1e9 else f"{n / 1e6:.0f} MB"
 
 
-def _progress(done, total):
+def _progress(done, total, stream=None):
     """Полоса в stderr. Под Claude Code вывод команды не стримится — там её
     просто не видно, и это нормально: она для запуска из терминала, где
-    двухминутная тишина выглядит как зависание."""
-    if not sys.stderr.isatty():
+    двухминутная тишина выглядит как зависание.
+
+    `stream` — шов для тестов: подменять глобальный `sys.stderr` нельзя,
+    pytest переустанавливает его между настройкой фикстуры и телом теста,
+    и подмена не доживает до проверки.
+    """
+    out = stream if stream is not None else sys.stderr
+    if not out.isatty():
         return
     if done % 50 and done != total:
         return
-    sys.stderr.write(f"\r  scanning… {done}/{total} · {100 * done // total}%")
+    out.write(f"\r  scanning… {done}/{total} · {100 * done // total}%")
     if done == total:
-        sys.stderr.write("\r" + " " * 40 + "\r")
-    sys.stderr.flush()
+        out.write("\r" + " " * 40 + "\r")
+    out.flush()
 
 
 def cmd_scan(args):
