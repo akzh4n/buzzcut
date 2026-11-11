@@ -9,7 +9,9 @@ import glob
 import hashlib
 import json
 import os
+import pathlib
 import re
+import sqlite3
 from collections import Counter, defaultdict
 
 from detect import find_secrets
@@ -18,9 +20,11 @@ HOME = os.path.expanduser("~")
 DEFAULT_ROOT = os.path.join(HOME, ".claude", "projects")
 
 # Codex пишет тот же JSONL, что и Claude Code, но держит вторую копию сессий
-# в своей SQLite и помнит байтовые смещения в логах. Поэтому его логи только
-# читаем: `clean` их не трогает.
+# в своей SQLite и помнит байтовые смещения в логах. Поэтому `clean` режет
+# у него маской той же длины, и в логах, и в базах.
 CODEX_DIRS = (".codex/sessions", ".codex/archived_sessions")
+CODEX_FILES = (".codex/history.jsonl",)  # история промптов
+CODEX_DBS = (".codex/thread_history_*.sqlite", ".codex/logs_*.sqlite")
 AGENT_LABEL = {"claude": "Claude Code", "codex": "Codex"}
 
 # Предварительный отсев: одна альтернатива вместо одиннадцати проходов по
@@ -45,15 +49,24 @@ def transcript_paths(root=DEFAULT_ROOT):
     return sorted(glob.glob(os.path.join(root, "*", "**", "*.jsonl"), recursive=True))
 
 
+def _codex_meta(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return json.loads(fh.readline())["payload"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
 def _codex_project(path):
     """Проект сессии Codex — её cwd, записанный так же, как Claude Code
     называет папки проектов: тогда один проект двух агентов — одна строка."""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            cwd = json.loads(fh.readline())["payload"]["cwd"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return "codex"
-    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
+    cwd = _codex_meta(path).get("cwd")
+    return re.sub(r"[^A-Za-z0-9]", "-", cwd) if isinstance(cwd, str) and cwd else "codex"
+
+
+def codex_session_id(path):
+    """id сессии Codex: он же thread_id её строк в базах Codex."""
+    return _codex_meta(path).get("id")
 
 
 def log_files(root=None, home=None):
@@ -70,10 +83,52 @@ def log_files(root=None, home=None):
     for d in CODEX_DIRS:
         for p in sorted(glob.glob(os.path.join(home, d, "**", "*.jsonl"), recursive=True)):
             out.append(("codex", p, _codex_project(p)))
+    for pattern in CODEX_FILES:
+        out += [("codex", p, "codex prompts") for p in sorted(glob.glob(os.path.join(home, pattern)))]
+    for pattern in CODEX_DBS:
+        out += [("codex", p, "codex database") for p in sorted(glob.glob(os.path.join(home, pattern)))]
     return out
 
 
+def open_sqlite_ro(path):
+    """(соединение только на чтение, таблицы) или (None, []). База в режиме WAL
+    без файла -shm не открывается даже на чтение, тогда читаем как неизменяемую."""
+    for query in ("?mode=ro", "?mode=ro&immutable=1"):
+        try:
+            con = sqlite3.connect(pathlib.Path(path).as_uri() + query, uri=True)
+            tables = [t for (t,) in con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+            return con, tables
+        except sqlite3.Error:
+            continue
+    return None, []
+
+
+def _sqlite_texts(path):
+    """Текстовые значения всех таблиц, только чтение."""
+    con, tables = open_sqlite_ro(path)
+    if con is None:
+        return
+    try:
+        for t in tables:
+            cols = con.execute(f'PRAGMA table_info("{t}")').fetchall()
+            for c in cols:
+                if not any(k in (c[2] or "").upper() for k in ("CHAR", "CLOB", "TEXT")):
+                    continue
+                for (v,) in con.execute(f'SELECT "{c[1]}" FROM "{t}"'):
+                    if isinstance(v, str):
+                        yield v
+    except sqlite3.Error:
+        return
+    finally:
+        con.close()
+
+
 def read_lines(path):
+    """Текст лога порциями: JSONL построчно, база — по значениям."""
+    if path.endswith(".sqlite"):
+        yield from _sqlite_texts(path)
+        return
     with open(path, encoding="utf-8", errors="replace") as fh:
         yield from fh
 

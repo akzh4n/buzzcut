@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "buzzcut",
-      "description": "Scans Claude Code and Codex logs for leaked keys, checks which are live, cuts them out of Claude Code logs, and redacts tool output before the model sees it.",
+      "description": "Scans Claude Code and Codex logs for leaked keys, checks which are live, cuts them out, and redacts Claude Code tool output before the model sees it.",
       "source": "./",
       "category": "security"
     }
