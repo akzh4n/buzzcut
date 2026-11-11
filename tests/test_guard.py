@@ -82,3 +82,30 @@ class TestHandle:
     def test_survives_a_string_response(self):
         res = handle({"tool_name": "Read", "tool_response": SECRET})
         assert FAKE_KEY not in json.dumps(res["hookSpecificOutput"]["updatedToolOutput"])
+
+
+class TestPluginWiring:
+    """0.1.1 shipped hooks.json without the top-level `hooks` key. Claude Code
+    logged "Failed to load hooks" to its debug log and carried on, so the hook
+    silently never ran for anyone. Nothing in the suite looked at the file."""
+
+    def load(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        return root, json.loads((root / "hooks" / "hooks.json").read_text())
+
+    def test_matchers_live_under_the_hooks_key(self):
+        _, cfg = self.load()
+        assert set(cfg) == {"hooks"}
+        assert "PostToolUse" in cfg["hooks"]
+
+    def test_covers_the_tools_that_read_files(self):
+        _, cfg = self.load()
+        matcher = cfg["hooks"]["PostToolUse"][0]["matcher"].split("|")
+        assert {"Bash", "Read", "Grep"} <= set(matcher)
+
+    def test_points_at_a_script_that_exists(self):
+        root, cfg = self.load()
+        command = cfg["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        assert "/scripts/guard.py" in command
+        assert (root / "scripts" / "guard.py").is_file()

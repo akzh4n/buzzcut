@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""buzzcut — find and cut credentials left behind in Claude Code transcripts.
+"""buzzcut — find and cut API keys AI coding agents left in their logs.
 
-  buzzcut scan            what is in ~/.claude/projects (read-only)
+Reads Claude Code (~/.claude/projects) and Codex (~/.codex/sessions) logs.
+Cleans Claude Code logs only.
+
+  buzzcut scan            what is in the logs (read-only)
   buzzcut check --yes     which of those keys still work (network)
   buzzcut clean           cut them out, with a mandatory backup
 """
@@ -16,8 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cleaner import clean_file                      # noqa: E402
 from detect import find_secrets                     # noqa: E402
 from liveness import DEAD, LIVE, MANUAL, check_key  # noqa: E402
-from scanner import (DEFAULT_ROOT, MIN_LINE, mask, maybe_secret,  # noqa: E402
-                     project_of, scan, shorten_projects, transcript_paths)
+from scanner import (AGENT_LABEL, HOME, MIN_LINE, log_files, mask,  # noqa: E402
+                     maybe_secret, read_lines, scan, shorten_projects)
 
 KIND_LABEL = {
     "openai": "OpenAI", "anthropic": "Anthropic", "github": "GitHub PAT",
@@ -53,12 +56,13 @@ def _progress(done, total, stream=None):
 
 def cmd_scan(args):
     r = scan(args.root, project=args.project, on_progress=_progress)
-    scope = f"{args.root}  ·  filter: {args.project}" if args.project else args.root
+    where = args.root or " · ".join(f"{AGENT_LABEL[a]} {n}" for a, n, _, _ in r["by_agent"])
     print()
-    print(f"  buzzcut — {scope}")
-    print(f"  {r['files']} files · {_human_bytes(r['bytes'])}")
+    print(f"  buzzcut — {where or 'no agent logs found'}")
+    print(f"  {r['files']} files · {_human_bytes(r['bytes'])}"
+          + (f"  ·  filter: {args.project}" if args.project else ""))
     if not args.project:
-        print("  (every Claude Code project, not just this one — "
+        print("  (every project, not just this one — "
               "narrow with: buzzcut scan --project NAME)")
     print()
     if not r["occurrences"]:
@@ -68,6 +72,11 @@ def cmd_scan(args):
     print(f"  FOUND    {r['unique']} unique · {r['occurrences']} occurrences · "
           f"{r['files_hit']} files")
     print()
+    if len(r["by_agent"]) > 1:
+        print("  BY AGENT")
+        for agent, _, occ, uniq in r["by_agent"]:
+            print(f"    {AGENT_LABEL[agent]:<18}{uniq:>4} uniq. {occ:>6} occ.")
+        print()
     print("  BY PROJECT")
     top = r["by_project"][:10]
     labels = shorten_projects([p for p, _, _ in top], width=46)
@@ -87,22 +96,18 @@ def cmd_scan(args):
 def _collect_unique(root, project=None):
     """{digest: (kind, value, project)} — значения держим только в памяти."""
     out = {}
-    paths = transcript_paths(root)
-    if project:
-        paths = [p for p in paths if project in project_of(p, root)]
-    for path in paths:
-        try:
-            fh = open(path, encoding="utf-8", errors="replace")
-        except OSError:
+    for _, path, proj in log_files(root):
+        if project and project not in proj:
             continue
-        proj = project_of(path, root)
-        with fh:
-            for line in fh:
+        try:
+            for line in read_lines(path):
                 if len(line) < MIN_LINE or not maybe_secret(line):
                     continue
                 for f in find_secrets(line):
                     d = hashlib.sha256(f.value.encode()).hexdigest()[:16]
                     out.setdefault(d, (f.kind, f.value, proj))
+        except OSError:
+            continue
     return out
 
 
@@ -123,9 +128,10 @@ def cmd_check(args):
         return 1
 
     live, dead, manual = [], [], []
+    labels = shorten_projects({p for _, _, p in found.values()}, width=30)
     for kind, value, proj in found.values():
         verdict = check_key(kind, value)
-        row = (KIND_LABEL.get(kind, kind), mask(value), proj)
+        row = (KIND_LABEL.get(kind, kind), mask(value), labels[proj])
         (live if verdict == LIVE else dead if verdict == DEAD else manual).append(row)
 
     if live:
@@ -147,20 +153,28 @@ def cmd_check(args):
 
 
 def cmd_clean(args):
-    paths = transcript_paths(args.root)
-    if args.project:
-        paths = [p for p in paths if args.project in project_of(p, args.root)]
+    entries = [e for e in log_files(args.root)
+               if not args.project or args.project in e[2]]
 
-    backup = args.backup or os.path.expanduser("~/.claude/projects.buzzcut-backup")
-    total, touched = 0, 0
-    for path in paths:
-        n = clean_file(path, backup_dir=backup, dry_run=args.dry_run)
+    # Бэкап повторяет путь от домашнего каталога: .claude/projects/…, .codex/sessions/…
+    backup = args.backup or os.path.join(HOME, ".buzzcut-backup")
+    base = args.root or HOME
+    total, touched, codex = 0, 0, 0
+    for agent, path, _ in entries:
+        if agent != "claude":
+            codex += 1  # копия в SQLite Codex и смещения: правка сломала бы историю
+            continue
+        n = clean_file(path, backup_dir=backup, dry_run=args.dry_run, root=base)
         if n:
             total += n
             touched += 1
 
     verb = "would cut" if args.dry_run else "cut"
     print(f"\n  {verb} {total} occurrences in {touched} files")
+    if codex:
+        print("  Codex logs are left as they are: Codex keeps a second copy of every")
+        print("  session in its own database, and editing the logs would break it.")
+        print("  Rotate the keys instead; `buzzcut check` shows which still work.")
     if args.dry_run:
         print("  Dry run. Drop --dry-run to apply.\n")
     elif total:
@@ -173,7 +187,7 @@ def cmd_clean(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="buzzcut", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default=DEFAULT_ROOT)
+    ap.add_argument("--root", help="read only this folder (laid out like ~/.claude/projects)")
     sub = ap.add_subparsers(dest="cmd")
 
     PROJECT_HELP = "limit to projects whose name contains this substring"
