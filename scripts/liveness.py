@@ -54,6 +54,9 @@ def check_key(kind, value):
                 return LIVE if body.get("ok") else DEAD
             return LIVE if resp.status == 200 else UNKNOWN
     except urllib.error.HTTPError as e:
-        return DEAD if e.code in (401, 403) else UNKNOWN
+        # 401 — провайдер ключа не знает. 403 — знает, но не пускает на этот
+        # эндпоинт (ключ с урезанными правами, регион, лимит): ключ жив.
+        # Ошибка в сторону DEAD говорит «уже отозван» про рабочий ключ.
+        return DEAD if e.code == 401 else LIVE if e.code == 403 else UNKNOWN
     except Exception:
         return UNKNOWN

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "buzzcut",
-  "description": "Finds credentials left behind in Claude Code transcripts — and tells you which ones still work.",
+  "description": "Finds API keys coding agents left in their logs, and tells you which ones still work.",
   "owner": {
     "name": "akzh4n",
     "url": "https://github.com/akzh4n"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "buzzcut",
-      "description": "Scans ~/.claude/projects for leaked secrets, checks which keys are still live, redacts tool output before the model sees it.",
+      "description": "Scans Claude Code and Codex logs for leaked keys, checks which are live, cuts them out of Claude Code logs, and redacts tool output before the model sees it.",
       "source": "./",
       "category": "security"
     }

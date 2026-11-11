@@ -1,10 +1,17 @@
 {
   "name": "buzzcut",
-  "version": "0.1.1",
-  "description": "Finds credentials left behind in Claude Code transcripts, tells you which ones still work, and redacts secrets from tool output before the model sees them.",
+  "version": "0.1.2",
+  "description": "Finds API keys coding agents left in their logs (Claude Code, Codex), tells you which still work, cuts them out of Claude Code logs, and redacts tool output before the model sees it.",
   "author": {
     "name": "akzh4n"
   },
   "homepage": "https://github.com/akzh4n/buzzcut",
-  "keywords": ["security", "secrets", "credentials", "transcripts", "redaction"]
+  "keywords": [
+    "security",
+    "secrets",
+    "api-keys",
+    "claude-code",
+    "codex",
+    "redaction"
+  ]
 }

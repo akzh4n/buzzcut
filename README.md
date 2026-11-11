@@ -1,123 +1,142 @@
-<h1 align="center">buzzcut</h1>
+# buzzcut ✂
 
-<p align="center">
-  <em>Your agent read <code>.env</code> once, six weeks ago.<br>It's still sitting on your disk in plaintext.</em>
-</p>
+**Your coding agent ran `cat .env` once. Your keys are still in its logs, in plain text.**
 
-<p align="center">
-  <img src="https://img.shields.io/github/stars/akzh4n/buzzcut?style=flat-square&color=111111&label=stars" alt="Stars">
-  <img src="https://img.shields.io/badge/tests-161-111111?style=flat-square" alt="161 tests">
-  <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
+buzzcut finds them, tells you which ones still work, and cuts them out.
+Supports **Claude Code** and **Codex**.
+
+<p>
+  <img src="https://img.shields.io/badge/tests-136-111111?style=flat-square" alt="136 tests">
   <img src="https://img.shields.io/badge/deps-none-111111?style=flat-square" alt="No dependencies">
+  <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
 </p>
 
 <p align="center">
-  <strong>128 credentials &middot; 1,158 occurrences &middot; 242 files</strong><br>
-  <sub>Found on one working developer machine, accumulated over two months of normal use.
-  Nobody pasted a key anywhere. The agent ran <code>cat .env</code> to debug something, and
-  Claude Code wrote the output to disk — where it stays forever.
-  <a href="#what-this-actually-found">Methodology</a>.</sub>
+  <img src="assets/preview.svg" width="720" alt="A blade passes over an .env dump in a Claude Code log. The three secret values fall away as clippings; NODE_ENV and the rest of each line stay.">
 </p>
-
----
 
 ## The problem
 
-Claude Code records every session to `~/.claude/projects/**/*.jsonl`. Everything a tool prints goes in — including the contents of any credential file the agent opened. `.gitignore` does not apply; this is not your repository.
+Coding agents save every session to disk, including everything a tool prints. When the agent reads your `.env` to debug something, your keys go into that log.
 
-Anthropic knows. Two issues report it with real incidents — [#58043](https://github.com/anthropics/claude-code/issues/58043) (a `PINECONE_API_KEY` leaked during routine debugging) and [#59094](https://github.com/anthropics/claude-code/issues/59094) (live brokerage credentials leaked *despite* an explicit project rule forbidding it).
+- The logs are not in your repo. `.gitignore` doesn't cover them, and the secret scanners that watch your repo never look there.
+- They stay around. Claude Code keeps them for 30 days by default. Mine go back five months.
+- The keys were also sent to the model.
 
-**Both are closed as `not planned`.** Labels: `area:security`, `stale`. Remediation is your problem.
+On my laptop buzzcut found **188 secrets in Claude Code logs and 125 in Codex logs**.
+
+See for yourself. Nothing to install:
+
+```
+git clone https://github.com/akzh4n/buzzcut
+python3 buzzcut/scripts/buzzcut.py scan
+```
+
+## What it does
+
+```
+scan    find keys in the logs                read-only, never prints a key
+check   which keys still work                asks the provider, only with --yes
+clean   cut keys out of Claude Code logs     dry run first, always backs up
+hook    stop new keys from reaching the      Claude Code
+        model and the log
+```
+
+## Example
+
+**The hook.** The agent runs `cat .env`. The model gets back:
+
+```
+NODE_ENV=production
+OPENAI_API_KEY=***REDACTED by buzzcut: openai***
+DB_PASSWORD=***REDACTED by buzzcut: env_secret***
+
+✂ buzzcut: 2 secrets cut from Bash output
+```
+
+The command still works. The key never reaches the model or the log.
+
+**scan** finds what is already there:
+
+```
+  buzzcut — Claude Code 11 · Codex 3
+
+  FOUND    11 unique · 39 occurrences · 14 files
+
+  BY AGENT
+    Claude Code          8 uniq.     30 occ.
+    Codex                3 uniq.      9 occ.
+
+  BY TYPE
+    ENV secret           3 uniq.     11 occ.
+    URL credentials      2 uniq.      9 occ.
+    OpenAI               1 uniq.      6 occ.
+    GitHub PAT           2 uniq.      6 occ.
+    ...
+```
+
+**check** tells you what to rotate first:
+
+```
+  LIVE — rotate now
+    OpenAI          sk-proj-…isAj     api
+    GitHub PAT      ghp_…FfkC         web
+    GitHub PAT      ghp_…z9CP         bot
+
+  DEAD — 1, already rotated, just clean them out
+
+  TOTAL   3 live · 1 dead · 7 to judge
+```
+
+<sub>Fake keys in a demo folder.</sub>
+
+## Supported agents
+
+| | scan | check | clean | hook |
+|---|:-:|:-:|:-:|:-:|
+| Claude Code | ✓ | ✓ | ✓ | ✓ |
+| Codex | ✓ | ✓ | | |
+
+Codex keeps a second copy of every session in its own database, so buzzcut never edits Codex files. Rotate the keys it finds there.
+
+Other agents (Cursor, Gemini CLI, Cline, Windsurf) aren't supported yet. PRs welcome.
 
 ## Install
+
+**Claude Code plugin.** Adds the hook and the `/buzzcut:scan`, `/buzzcut:check` and `/buzzcut:clean` commands:
 
 ```
 /plugin marketplace add akzh4n/buzzcut
 /plugin install buzzcut@buzzcut
 ```
 
-Just want to look first? No install, no plugin, no dependencies — Python 3 is all you need:
+**Without the plugin.** Python 3, no dependencies:
 
 ```
-git clone https://github.com/akzh4n/buzzcut && python3 buzzcut/scripts/buzzcut.py scan
+git clone https://github.com/akzh4n/buzzcut
+python3 buzzcut/scripts/buzzcut.py scan
 ```
 
-## What it does
+Installed 0.1.1? Update. Its hook didn't load.
 
-| | |
-|---|---|
-| `/buzzcut:scan` | Reports what's in your transcripts. Read-only. Never prints key values — types, projects and counts only, so you can paste the output into a ticket. Covers every project by default (transcripts are global); narrow with `--project` |
-| `/buzzcut:check` | **Which of those keys still work.** Asks each provider over a read-only endpoint. Network access, explicit consent required |
-| `/buzzcut:clean` | Cuts the values out of the files. Mandatory backup, `--dry-run` first |
-| hook | Redacts secrets from tool output *before the model sees them* — so they never reach the context or the disk |
+## FAQ
 
-## The part nobody else does
+**Why not trufflehog?**
+It's great at finding and verifying keys. If you have it, run it on these folders too. buzzcut adds the hook, which stops new leaks, and `clean`, which removes old ones from Claude Code logs. It's about 800 lines of plain Python you can read before running.
 
-Every other tool stops at *"this string looks like a key."*
+**Why not just grep?**
+The logs are JSONL. A whole `.env` dump sits on one line with newlines escaped as `\n`, so a regex looking for `NAME=value` sees `\nDB_PASSWORD` as one word and misses every variable after the first.
 
-That's the wrong end of the problem. **1,158 matches** is noise you scroll past. **"Three keys an attacker could use right now"** is an incident you act on. `buzzcut check` asks the provider.
+**Does it send my keys anywhere?**
+Only `check` does, only with `--yes`, and only to each key's own provider.
 
-The report it produces (shape of the output — `check` makes network calls, so it only runs on explicit consent):
-
-```
-  LIVE — rotate now
-    OpenAI          sk-pro…Xe4     flowly
-    GitHub PAT      ghp_4m…kM2     flowly
-
-  DEAD — already rotated, just clean them out
-
-  YOUR CALL
-    private key, database URLs, internal service secrets
-```
-
-## Before / after
-
-```
-⏺ Bash(cat backend/.env)
-  ⎿  NODE_ENV=production
-     DATABASE_URL=postgres://flowly:***REDACTED by buzzcut***@10.0.0.4/prod
-     OPENAI_API_KEY=***REDACTED by buzzcut: openai***
-
-  ✂ buzzcut: 2 secrets cut from Bash output
-```
-
-The command still ran. The agent got the file it asked for, minus the values. It does not start debugging a "broken" command — which is what happens when a tool rewrites the command itself with a `sed` filter instead of editing the result.
-
-## What this actually found
-
-Numbers above come from a real machine: 4,308 transcripts, 1.9 GB, roughly two months of daily agent use across seven projects. They exclude buzzcut's own project directory, whose transcripts contain this repository's test fixtures rather than anybody's leaks.
-
-**A naive scanner reports 373 unique matches on that data.** Two thirds of that is noise: `PYTHONPATH=/a/b`, `HEAD=<sha>`, `WT=/path/DEV-604` — shell variables holding paths and git refs, structurally identical to a secret. A redaction hook that cuts those breaks your agent on every step.
-
-buzzcut gates `ENV`-shaped findings on the *variable name* and excludes prefixes that are public by construction (`NEXT_PUBLIC_`, `VITE_`, `REACT_APP_`, `EXPO_PUBLIC_` — bundlers ship those to the browser anyway). That leaves **128 unique keys across 1,158 occurrences**, and what survives is `POSTGRES_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `JWT_SECRET`, `R2_SECRET_ACCESS_KEY`, `TIKTOK_CLIENT_SECRET`. Real ones.
-
-False positives cost more than misses here — a hook that cuts the wrong string hands your agent corrupted data and it starts debugging a problem that does not exist. So the test suite has more cases asserting what must **not** be cut than what must.
-
-### One detail that costs other scanners a third of the findings
-
-In a `.jsonl` transcript a newline is stored as the two characters `\` and `n`, not as a newline. So a `cat .env` dump lives on one physical line:
-
-```
-{"stdout":"OPENAI_API_KEY=sk-proj-…\nDB_PASSWORD=…\nAWS_SECRET_ACCESS_KEY=…"}
-```
-
-To a regex, `…\nDB_PASSWORD` is a single word — the word boundary is gone, and everything after the *first* variable silently disappears. Grepping these files naively finds the first secret in each dump and misses the rest. On this corpus that was 38 keys, including an AWS secret access key and a Postgres password.
-
-buzzcut normalises those escapes before matching, using a **replacement of identical length** so match offsets stay valid against the original bytes — `clean` edits the file in place by offset, and a shifted offset would corrupt the line instead of redacting it. That invariant has its own test.
+**Is cleaning enough?**
+No. The key already reached the model. Rotate it.
 
 ## Limits
 
-- **Cleaning does not un-leak anything.** A key that reached a transcript is compromised. Rotate it. `check` tells you which ones still matter.
-- AWS, Google API keys, database URLs and internal secrets are **not** probed automatically — that needs request signing or a connection to your own production. Those are listed for you to judge.
-- The detector is a heuristic. It does not replace `gitleaks` on your repo; it covers a surface `gitleaks` never looks at.
+- The hook covers Bash, Read, Grep and Glob. It doesn't see MCP tools, failed commands, or keys you paste yourself.
+- buzzcut reads session logs only. Claude Code also keeps copies of the files the agent edited in `~/.claude/file-history`, and Codex keeps its own database and debug logs. Those aren't scanned yet.
+- Detection is a heuristic: OpenAI, Anthropic, GitHub, AWS, Google, Slack and Telegram tokens, JWTs, private keys, database URLs, and variables named like `*_SECRET`, `*_TOKEN` or `*_PASSWORD`.
 
-## Development
-
-```
-python3 -m pytest tests/ -q        # 94 tests — the plugin
-python3 -m pytest research/ -q     # 67 tests — the measurement code behind the numbers above
-```
-
-No dependencies, standard library only.
-
-MIT.
+MIT

@@ -111,6 +111,13 @@ class TestMustNotMatch:
     def test_env_var_name_alone(self):
         assert find_secrets("проверь, стоит ли OPENAI_API_KEY в окружении") == []
 
+    def test_sk_inside_a_word_is_not_a_key(self):
+        # `risk-…`, `desk-…`, `task-…` contain `sk-` followed by 20+ word chars.
+        # Without a word boundary the hook cut these out of ordinary output.
+        assert find_secrets("risk-assessment-framework-2026") == []
+        assert find_secrets("desk-booking-service-production-v2") == []
+        assert find_secrets("see task-a1b2c3d4e5f6g7h8i9j0k1l2") == []
+
     def test_git_sha_is_not_a_secret(self):
         assert find_secrets("commit f519c397a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6") == []
 

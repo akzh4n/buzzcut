@@ -20,18 +20,19 @@ def clean_text(text):
     return redact(text), len(found)
 
 
-def _backup(path, backup_dir):
-    rel = os.path.basename(path)
-    parent = os.path.basename(os.path.dirname(path)) or "root"
-    dest_dir = os.path.join(backup_dir, parent)
-    os.makedirs(dest_dir, exist_ok=True)
-    shutil.copy2(path, os.path.join(dest_dir, rel))
+def _backup(path, backup_dir, root):
+    # Путь целиком, а не «папка/файл»: у сабагентов папка всегда `subagents`,
+    # и одноимённые agent-*.jsonl из разных сессий затирали бы копии друг друга.
+    dest = os.path.join(backup_dir, os.path.relpath(path, root))
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copy2(path, dest)
 
 
-def clean_file(path, backup_dir, dry_run=False):
+def clean_file(path, backup_dir, dry_run=False, root="/"):
     """Вырезает секреты из одного JSONL. Возвращает число вырезанных.
 
     Файл переписывается только если что-то нашлось, и только после бэкапа.
+    Бэкап повторяет путь файла относительно `root`.
     """
     if not backup_dir and not dry_run:
         raise ValueError("clean_file needs backup_dir: no backup, no write")
@@ -47,7 +48,7 @@ def clean_file(path, backup_dir, dry_run=False):
     if total == 0 or dry_run:
         return total
 
-    _backup(path, backup_dir)
+    _backup(path, backup_dir, root)
 
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", suffix=".buzzcut")
     try:

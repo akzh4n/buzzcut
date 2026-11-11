@@ -101,3 +101,34 @@ class TestCleanFile:
         p = self._write(tmp_path, [SECRET_LINE])
         with pytest.raises(ValueError):
             clean_file(str(p), backup_dir=None)
+
+
+class TestBackupLayout:
+    """Subagent transcripts all sit in a folder called `subagents`, and the same
+    agent-*.jsonl name does occur in two sessions on a real machine. 0.1.1 kept
+    only `parent/name`, so the second backup overwrote the first — the one copy
+    of the original was gone."""
+
+    def test_same_name_in_two_sessions_keeps_both_backups(self, tmp_path):
+        root = tmp_path / "projects"
+        a = root / "proj" / "session-a" / "subagents" / "agent-1.jsonl"
+        b = root / "proj" / "session-b" / "subagents" / "agent-1.jsonl"
+        for p, tag in ((a, "A"), (b, "B")):
+            p.parent.mkdir(parents=True)
+            p.write_text(SECRET_LINE + "\n" + json.dumps({"tag": tag}) + "\n", encoding="utf-8")
+
+        bak = tmp_path / "bak"
+        for p in (a, b):
+            clean_file(str(p), backup_dir=str(bak), root=str(root))
+
+        saved = sorted(bak.rglob("*.jsonl"))
+        assert len(saved) == 2
+        assert {'"tag": "A"' in s.read_text() for s in saved} == {True, False}
+
+    def test_backup_mirrors_the_path_under_root(self, tmp_path):
+        root = tmp_path / "projects"
+        p = root / "proj" / "session.jsonl"
+        p.parent.mkdir(parents=True)
+        p.write_text(SECRET_LINE + "\n", encoding="utf-8")
+        clean_file(str(p), backup_dir=str(tmp_path / "bak"), root=str(root))
+        assert (tmp_path / "bak" / "proj" / "session.jsonl").is_file()

@@ -166,3 +166,24 @@ class TestProjectOf:
         p.parent.mkdir(parents=True)
         p.write_text("{}", encoding="utf-8")
         assert project_of(str(p), str(tmp_path)) == "-Users-me-proj"
+
+
+class TestMask:
+    """`check` output is meant to be pasteable into a ticket, so a mask may
+    name the key's format and its last 4 characters, never more."""
+
+    def test_keeps_the_public_format_prefix(self):
+        from scanner import mask
+        assert mask("sk-proj-" + "a" * 44 + "WXYZ") == "sk-proj-…WXYZ"
+        assert mask("ghp_" + "b" * 32 + "WXYZ") == "ghp_…WXYZ"
+
+    def test_reveals_at_most_four_characters_of_the_secret(self):
+        from scanner import mask
+        secret = "Zq8" + "c" * 30 + "WXYZ"
+        shown = mask(secret).replace("…", "")
+        assert shown == "WXYZ"
+
+    def test_short_secrets_reveal_nothing(self):
+        from scanner import mask
+        assert mask("hunter2hunter2hunt") == "…"
+        assert mask("sk-proj-short") == "sk-proj-…"
