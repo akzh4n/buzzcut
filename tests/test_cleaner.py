@@ -132,3 +132,26 @@ class TestBackupLayout:
         p.write_text(SECRET_LINE + "\n", encoding="utf-8")
         clean_file(str(p), backup_dir=str(tmp_path / "bak"), root=str(root))
         assert (tmp_path / "bak" / "proj" / "session.jsonl").is_file()
+
+
+class TestExactBytes:
+    """Bytes buzzcut doesn't cut stay byte for byte: broken UTF-8 and CRLF
+    line endings are not normalised, a missing final newline is not added."""
+
+    def test_untouched_bytes_survive(self, tmp_path):
+        p = tmp_path / "s.jsonl"
+        raw = b'{"a":"\xff\xfe broken"}\r\n' + SECRET_LINE.encode() + b"\r\n" + CLEAN_LINE.encode()
+        p.write_bytes(raw)
+        clean_file(str(p), backup_dir=str(tmp_path / "bak"))
+        out = p.read_bytes()
+        assert out.startswith(b'{"a":"\xff\xfe broken"}\r\n')
+        assert out.endswith(b"\r\n" + CLEAN_LINE.encode())
+        assert FAKE_KEY.encode() not in out
+
+    def test_keep_length_keeps_the_file_size(self, tmp_path):
+        p = tmp_path / "s.jsonl"
+        p.write_text(CLEAN_LINE + "\n" + SECRET_LINE + "\n", encoding="utf-8")
+        before = p.stat().st_size
+        clean_file(str(p), backup_dir=str(tmp_path / "bak"), keep_length=True)
+        assert p.stat().st_size == before
+        assert FAKE_KEY not in p.read_text(encoding="utf-8")

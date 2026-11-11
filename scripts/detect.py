@@ -142,8 +142,12 @@ def find_secrets(text):
     return sorted(found, key=lambda f: f.start)
 
 
-def redact(text):
-    """Текст с вырезанными значениями. Если резать нечего — тот же объект."""
+def redact(text, keep_length=False):
+    """Текст с вырезанными значениями. Если резать нечего — тот же объект.
+
+    keep_length: вместо метки звёздочки той же длины в байтах. Нужна там, где
+    кто-то помнит байтовые смещения в файле (Codex): размер не меняется.
+    """
     found = find_secrets(text)
     if not found:
         return text
@@ -151,7 +155,8 @@ def redact(text):
     prev = 0
     for f in found:
         out.append(text[prev:f.start])
-        out.append(REDACTION.format(kind=f.kind))
+        out.append("*" * len(f.value.encode("utf-8", "surrogateescape")) if keep_length
+                   else REDACTION.format(kind=f.kind))
         prev = f.end
     out.append(text[prev:])
     return "".join(out)

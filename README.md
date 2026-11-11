@@ -6,13 +6,13 @@ buzzcut finds them, tells you which ones still work, and cuts them out.
 Supports **Claude Code** and **Codex**.
 
 <p>
-  <img src="https://img.shields.io/badge/tests-136-111111?style=flat-square" alt="136 tests">
+  <img src="https://img.shields.io/badge/tests-148-111111?style=flat-square" alt="148 tests">
   <img src="https://img.shields.io/badge/deps-none-111111?style=flat-square" alt="No dependencies">
   <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
 </p>
 
 <p align="center">
-  <img src="assets/preview.svg" width="720" alt="A blade passes over an .env dump in a Claude Code log. The three secret values fall away as clippings; NODE_ENV and the rest of each line stay.">
+  <img src="assets/preview.svg" width="720" alt="A blade passes over an .env dump in a coding agent log. The three secret values fall away as clippings; NODE_ENV and the rest of each line stay.">
 </p>
 
 ## The problem
@@ -35,11 +35,11 @@ python3 buzzcut/scripts/buzzcut.py scan
 ## What it does
 
 ```
-scan    find keys in the logs                read-only, never prints a key
-check   which keys still work                asks the provider, only with --yes
-clean   cut keys out of Claude Code logs     dry run first, always backs up
-hook    stop new keys from reaching the      Claude Code
-        model and the log
+scan    find keys in the logs           read-only, never prints a key
+check   which keys still work           asks the provider, only with --yes
+clean   cut keys out of the logs        dry run first, always backs up
+hook    stop new keys from reaching     Claude Code only
+        the model and the log
 ```
 
 ## Example
@@ -95,9 +95,9 @@ The command still works. The key never reaches the model or the log.
 | | scan | check | clean | hook |
 |---|:-:|:-:|:-:|:-:|
 | Claude Code | ✓ | ✓ | ✓ | ✓ |
-| Codex | ✓ | ✓ | | |
+| Codex | ✓ | ✓ | ✓ | |
 
-Codex keeps a second copy of every session in its own database, so buzzcut never edits Codex files. Rotate the keys it finds there.
+Codex remembers byte offsets into its logs and keeps a second copy of every session in its own database. So in Codex, `clean` replaces each key with asterisks of the same length, in the logs and in the database copies, and only while Codex is closed. Codex's hooks can't rewrite a command's output, so there is no hook for Codex.
 
 Other agents (Cursor, Gemini CLI, Cline, Windsurf) aren't supported yet. PRs welcome.
 
@@ -122,7 +122,7 @@ Installed 0.1.1? Update. Its hook didn't load.
 ## FAQ
 
 **Why not trufflehog?**
-It's great at finding and verifying keys. If you have it, run it on these folders too. buzzcut adds the hook, which stops new leaks, and `clean`, which removes old ones from Claude Code logs. It's about 800 lines of plain Python you can read before running.
+It's great at finding and verifying keys. If you have it, run it on these folders too. buzzcut adds the hook, which stops new leaks, and `clean`, which removes old ones. It's under 1,000 lines of plain Python you can read before running.
 
 **Why not just grep?**
 The logs are JSONL. A whole `.env` dump sits on one line with newlines escaped as `\n`, so a regex looking for `NAME=value` sees `\nDB_PASSWORD` as one word and misses every variable after the first.
@@ -131,12 +131,12 @@ The logs are JSONL. A whole `.env` dump sits on one line with newlines escaped a
 Only `check` does, only with `--yes`, and only to each key's own provider.
 
 **Is cleaning enough?**
-No. The key already reached the model. Rotate it.
+No. The key already reached the model. Rotate it. And once you've checked that everything works, delete `~/.buzzcut-backup`: it still holds the keys.
 
 ## Limits
 
 - The hook covers Bash, Read, Grep and Glob. It doesn't see MCP tools, failed commands, or keys you paste yourself.
-- buzzcut reads session logs only. Claude Code also keeps copies of the files the agent edited in `~/.claude/file-history`, and Codex keeps its own database and debug logs. Those aren't scanned yet.
+- Claude Code also keeps copies of the files the agent edited (`~/.claude/file-history`) and your prompt history. Those aren't scanned yet.
 - Detection is a heuristic: OpenAI, Anthropic, GitHub, AWS, Google, Slack and Telegram tokens, JWTs, private keys, database URLs, and variables named like `*_SECRET`, `*_TOKEN` or `*_PASSWORD`.
 
 MIT

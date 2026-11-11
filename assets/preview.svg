@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 284" width="720" height="284" role="img" aria-labelledby="title">
-<title id="title">buzzcut cuts the three secrets out of an agent log and leaves everything else untouched</title>
+<title id="title">buzzcut cuts the three secrets out of a coding agent log and leaves everything else untouched</title>
 <defs>
   <filter id="glow" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="2.5"/></filter>
 </defs>
@@ -9,7 +9,7 @@
 .s{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;font-size:13.5px}
 .cut{opacity:0;fill:#f2f2f4;transform-box:fill-box;transform-origin:50% 50%}
 .stub{stroke:#68686f;stroke-width:1.4;stroke-linecap:round;fill:none}
-.cut,.stub,.scene,.blade,.found,.done,.snipA,.snipB{animation-duration:8.0s;animation-iteration-count:infinite;animation-fill-mode:both}
+.cut,.stub,.scene,.blade,.hA,.hB,.found,.done,.snipA,.snipB{animation-duration:8.0s;animation-iteration-count:infinite;animation-fill-mode:both}
 .ico circle,.ico path{fill:none;stroke:#ff5b37;stroke-width:1.6;stroke-linecap:round}
 
 .scene{animation-name:scene}
@@ -17,6 +17,11 @@
   0%{opacity:0;transform:translateY(6px);animation-timing-function:cubic-bezier(.23,1,.32,1)}
   7.500%,86.250%{opacity:1;transform:none;animation-timing-function:cubic-bezier(.77,0,.175,1)}
   93.750%,100%{opacity:0;transform:none}}
+
+.hA,.hB{animation-duration:16.0s;animation-timing-function:steps(1,end)}
+.hA{animation-name:hA} .hB{animation-name:hB;opacity:0}
+@keyframes hA{0%{opacity:1}50%,100%{opacity:0}}
+@keyframes hB{0%{opacity:0}50%,100%{opacity:1}}
 
 .blade{opacity:0;animation-name:blade}
 @keyframes blade{
@@ -218,8 +223,10 @@
 <rect x=".5" y=".5" width="719" height="283" rx="14" fill="#0c0c0d" stroke="#232326"/>
 
 <g class="scene">
-  <text class="sm" fill="#66666c" x="40" y="46">~/.claude/projects/my-app/3f9c2e.jsonl</text>
-  <text class="s" fill="#8a8a91" x="680" y="46" text-anchor="end">Claude Code</text>
+  <text class="sm hA" fill="#66666c" x="40" y="46">~/.claude/projects/my-app/3f9c2e.jsonl</text>
+  <text class="sm hB" fill="#66666c" x="40" y="46">~/.codex/sessions/2026/11/rollout-3f9c2e.jsonl</text>
+  <text class="s hA" fill="#8a8a91" x="680" y="46" text-anchor="end">Claude Code</text>
+  <text class="s hB" fill="#8a8a91" x="680" y="46" text-anchor="end">Codex</text>
   <line x1="40" y1="66" x2="680" y2="66" stroke="#1d1d20"/>
 
   <text class="m" fill="#74747b" x="40.0 49.6 59.2 68.8 78.4 88.0 97.6 107.2" y="106">NODE_ENV</text>

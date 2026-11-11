@@ -247,3 +247,20 @@ class TestPublicByConvention:
         """Настоящий ключ провайдера остаётся находкой, где бы он ни лежал:
         форма самодостаточна, и попадание его в бандл — уже инцидент."""
         assert kinds(f"NEXT_PUBLIC_KEY={FAKE['openai']}") == ["openai"]
+
+
+class TestKeepLength:
+    """Codex remembers byte offsets into its logs, so a cut must not change
+    the size of anything, even when the secret holds non-ASCII bytes."""
+
+    def test_same_byte_length(self):
+        line = f'{{"out":"OPENAI_API_KEY={FAKE["openai"]}"}}'
+        out = redact(line, keep_length=True)
+        assert len(out.encode()) == len(line.encode())
+        assert FAKE["openai"] not in out
+
+    def test_non_ascii_password_keeps_its_byte_length(self):
+        line = "postgres://app:" + "pässwörd-Ünï-9xQ2" + "@db/prod"
+        out = redact(line, keep_length=True)
+        assert len(out.encode()) == len(line.encode())
+        assert "pässwörd" not in out

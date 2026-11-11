@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """buzzcut — find and cut API keys AI coding agents left in their logs.
 
-Reads Claude Code (~/.claude/projects) and Codex (~/.codex/sessions) logs.
-Cleans Claude Code logs only.
+Reads Claude Code (~/.claude/projects) and Codex (~/.codex) logs. Codex is
+cleaned with same-length masks, only while no process holds its files.
 
   buzzcut scan            what is in the logs (read-only)
   buzzcut check --yes     which of those keys still work (network)
@@ -12,14 +12,15 @@ Cleans Claude Code logs only.
 import argparse
 import hashlib
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from cleaner import clean_file                      # noqa: E402
+from cleaner import clean_file, clean_sqlite        # noqa: E402
 from detect import find_secrets                     # noqa: E402
 from liveness import DEAD, LIVE, MANUAL, check_key  # noqa: E402
-from scanner import (AGENT_LABEL, HOME, MIN_LINE, log_files, mask,  # noqa: E402
+from scanner import (AGENT_LABEL, HOME, MIN_LINE, codex_session_id, log_files, mask,  # noqa: E402
                      maybe_secret, read_lines, scan, shorten_projects)
 
 KIND_LABEL = {
@@ -152,33 +153,67 @@ def cmd_check(args):
     return 0
 
 
-def cmd_clean(args):
-    entries = [e for e in log_files(args.root)
-               if not args.project or args.project in e[2]]
+def _codex_busy(paths):
+    """PID процессов, которые держат эти файлы открытыми (обычно сам Codex).
+    Без lsof — любые процессы codex. Если и этого не узнать, считаем занятым:
+    лучше не почистить, чем писать в базу под работающим Codex."""
+    try:
+        out = subprocess.run(["lsof", "-t", "--", *paths], capture_output=True, text=True).stdout
+        return sorted({int(p) for p in out.split()})
+    except (OSError, ValueError):
+        pass
+    try:
+        out = subprocess.run(["ps", "-A", "-o", "pid=,comm="], capture_output=True, text=True).stdout
+    except OSError:
+        return [0]
+    rows = (line.strip().partition(" ") for line in out.splitlines())
+    return sorted(int(pid) for pid, _, comm in rows
+                  if os.path.basename(comm.strip()).lower().startswith("codex"))
 
-    # Бэкап повторяет путь от домашнего каталога: .claude/projects/…, .codex/sessions/…
+
+def cmd_clean(args):
+    entries = log_files(args.root)
+    wanted = lambda proj: not args.project or args.project in proj  # noqa: E731
+    claude = [p for a, p, proj in entries if a == "claude" and wanted(proj)]
+    codex_logs = [p for a, p, proj in entries if a == "codex" and not p.endswith(".sqlite") and wanted(proj)]
+    codex_dbs = [p for a, p, _ in entries if a == "codex" and p.endswith(".sqlite")]
+    ids = None
+    if args.project:  # в базах Codex режем только строки сессий этого проекта
+        ids = [i for i in map(codex_session_id, codex_logs) if i]
+        codex_dbs = codex_dbs if ids else []
+
+    # Бэкап повторяет путь от домашнего каталога: .claude/projects/…, .codex/…
     backup = args.backup or os.path.join(HOME, ".buzzcut-backup")
     base = args.root or HOME
-    total, touched, codex = 0, 0, 0
-    for agent, path, _ in entries:
-        if agent != "claude":
-            codex += 1  # копия в SQLite Codex и смещения: правка сломала бы историю
-            continue
-        n = clean_file(path, backup_dir=backup, dry_run=args.dry_run, root=base)
+    total, touched = 0, 0
+
+    def tally(n):
+        nonlocal total, touched
         if n:
             total += n
             touched += 1
 
+    for path in claude:
+        tally(clean_file(path, backup_dir=backup, dry_run=args.dry_run, root=base))
+
+    codex = codex_logs + codex_dbs
+    busy = _codex_busy(codex) if codex and not args.dry_run else []
+    if busy:
+        print(f"\n  Codex is running (pid {', '.join(map(str, busy))}), so its logs were left as they are.")
+        print("  Quit Codex completely and run clean again.")
+    else:
+        for path in codex_logs:
+            tally(clean_file(path, backup_dir=backup, dry_run=args.dry_run, root=base, keep_length=True))
+        for path in codex_dbs:
+            tally(clean_sqlite(path, backup_dir=backup, dry_run=args.dry_run, root=base, thread_ids=ids))
+
     verb = "would cut" if args.dry_run else "cut"
     print(f"\n  {verb} {total} occurrences in {touched} files")
-    if codex:
-        print("  Codex logs are left as they are: Codex keeps a second copy of every")
-        print("  session in its own database, and editing the logs would break it.")
-        print("  Rotate the keys instead; `buzzcut check` shows which still work.")
     if args.dry_run:
         print("  Dry run. Drop --dry-run to apply.\n")
     elif total:
-        print(f"  Backup: {backup}\n")
+        print(f"  Backup: {backup}")
+        print("  It still holds the keys. Delete it once you've checked everything works.\n")
     else:
         print()
     return 0
