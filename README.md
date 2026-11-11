@@ -110,6 +110,8 @@ Other agents (Cursor, Gemini CLI, Cline, Windsurf) aren't supported yet. PRs wel
 /plugin install buzzcut@buzzcut
 ```
 
+If it asks for a scope, pick user: the hook only protects the projects where the plugin is installed.
+
 **Without the plugin.** Python 3, no dependencies:
 
 ```
