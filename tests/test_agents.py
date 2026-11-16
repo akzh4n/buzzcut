@@ -149,6 +149,43 @@ class TestClean:
         assert "It still holds the keys" in capsys.readouterr().out
 
 
+class TestClaudeCopies:
+    """Claude Code keeps a copy of every file the agent edited (to undo edits)
+    and every prompt you typed. A key in .env ends up in both."""
+
+    @pytest.fixture
+    def copies(self, home):
+        copy = home / ".claude" / "file-history" / "s" / "1f2e3d@v2"  # session s = the alpha transcript
+        copy.parent.mkdir(parents=True)
+        copy.write_text(f"NODE_ENV=production\nOPENAI_API_KEY={FAKE_KEY}\n", encoding="utf-8")
+        orphan = home / ".claude" / "file-history" / "gone" / "9a8b7c@v1"
+        orphan.parent.mkdir(parents=True)
+        orphan.write_text(f"OPENAI_API_KEY={FAKE_KEY}\n", encoding="utf-8")
+        prompts = home / ".claude" / "history.jsonl"
+        prompts.write_text(json.dumps({"display": f"use {FAKE_KEY}"}) + "\n", encoding="utf-8")
+        return copy, orphan, prompts
+
+    def test_listed_under_their_project(self, home, copies):
+        labels = {p: proj for _, p, proj in log_files()}
+        copy, orphan, prompts = map(str, copies)
+        assert labels[copy] == "-Users-me-alpha"
+        assert labels[orphan] == "claude file backups"
+        assert labels[prompts] == "claude prompts"
+
+    def test_clean_cuts_them_and_warns_about_undo(self, home, copies, capsys):
+        buzzcut.main(["clean"])
+        for f in copies:
+            assert FAKE_KEY not in f.read_text(encoding="utf-8")
+        assert copies[0].read_text(encoding="utf-8").startswith("NODE_ENV=production\n")
+        assert "2 of them are copies Claude Code keeps to undo edits" in capsys.readouterr().out
+
+    def test_project_reaches_the_copies_of_that_project(self, home, copies):
+        buzzcut.main(["clean", "--project", "alpha"])
+        copy, orphan, _ = copies
+        assert FAKE_KEY not in copy.read_text(encoding="utf-8")
+        assert FAKE_KEY in orphan.read_text(encoding="utf-8")
+
+
 @pytest.mark.skipif(not shutil.which("lsof"), reason="needs lsof")
 class TestBusyCheck:
     def test_sees_a_process_holding_the_file(self, tmp_path):

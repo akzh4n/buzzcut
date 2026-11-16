@@ -37,7 +37,7 @@ def http_error(code):
     return urllib.error.HTTPError("https://x", code, "", {}, None)
 
 
-@pytest.mark.parametrize("kind", ["openai", "anthropic", "github"])
+@pytest.mark.parametrize("kind", ["openai", "anthropic", "github", "stripe"])
 class TestHttpProviders:
     def test_200_is_live(self, monkeypatch, kind):
         answer(monkeypatch, status=200)
@@ -68,6 +68,27 @@ class TestSlack:
     def test_ok_true_is_live(self, monkeypatch):
         answer(monkeypatch, status=200, body=b'{"ok": true}')
         assert check_key("slack", "k") == LIVE
+
+
+class TestTelegram:
+    def test_ok_true_is_live(self, monkeypatch):
+        answer(monkeypatch, status=200, body=b'{"ok": true}')
+        assert check_key("telegram", "k") == LIVE
+
+    def test_401_is_dead(self, monkeypatch):
+        answer(monkeypatch, error=http_error(401))
+        assert check_key("telegram", "k") == DEAD
+
+    def test_the_token_goes_only_to_telegram(self, monkeypatch):
+        seen = []
+
+        def fake_urlopen(req, timeout):
+            seen.append(req.full_url)
+            raise http_error(401)
+
+        monkeypatch.setattr(liveness.urllib.request, "urlopen", fake_urlopen)
+        check_key("telegram", "123:AAtoken")
+        assert seen == ["https://api.telegram.org/bot123:AAtoken/getMe"]
 
 
 class TestNeverProbed:

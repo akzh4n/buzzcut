@@ -6,7 +6,7 @@ buzzcut finds them, tells you which ones still work, and cuts them out.
 Supports **Claude Code** and **Codex**.
 
 <p>
-  <img src="https://img.shields.io/badge/tests-148-111111?style=flat-square" alt="148 tests">
+  <img src="https://img.shields.io/badge/tests-162-111111?style=flat-square" alt="162 tests">
   <img src="https://img.shields.io/badge/deps-none-111111?style=flat-square" alt="No dependencies">
   <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
 </p>
@@ -17,13 +17,13 @@ Supports **Claude Code** and **Codex**.
 
 ## The problem
 
-Coding agents save every session to disk, including everything a tool prints. When the agent reads your `.env` to debug something, your keys go into that log.
+Coding agents save every session to disk, including everything a tool prints. When the agent reads your `.env` to debug something, your keys go into that log. Claude Code also keeps a copy of every file the agent edits, so it can undo the edit, and every prompt you type.
 
 - The logs are not in your repo. `.gitignore` doesn't cover them, and the secret scanners that watch your repo never look there.
 - They stay around. Claude Code keeps them for 30 days by default. Mine go back five months.
 - The keys were also sent to the model.
 
-On my laptop buzzcut found **188 secrets in Claude Code logs and 125 in Codex logs**.
+On my laptop buzzcut found **204 secrets in Claude Code's files and 183 in Codex's**.
 
 See for yourself. Nothing to install:
 
@@ -138,7 +138,8 @@ No. The key already reached the model. Rotate it. And once you've checked that e
 ## Limits
 
 - The hook covers Bash, Read, Grep and Glob. It doesn't see MCP tools, failed commands, or keys you paste yourself.
-- Claude Code also keeps copies of the files the agent edited (`~/.claude/file-history`) and your prompt history. Those aren't scanned yet.
-- Detection is a heuristic: OpenAI, Anthropic, GitHub, AWS, Google, Slack and Telegram tokens, JWTs, private keys, database URLs, and variables named like `*_SECRET`, `*_TOKEN` or `*_PASSWORD`.
+- Claude Code undoes edits from its copies of the files. After `clean`, undoing an old edit brings the file back with the keys cut out. The originals are in `~/.buzzcut-backup`.
+- `check` can ask OpenAI, Anthropic, GitHub, Slack, Stripe and Telegram. AWS, Google, database passwords and the rest are your call.
+- Detection is a heuristic: OpenAI, Anthropic, GitHub, AWS, Google, Slack, Stripe and Telegram keys, JWTs, private keys, database URLs, and variables named like `*_SECRET`, `*_TOKEN` or `*_PASSWORD`.
 
 MIT
