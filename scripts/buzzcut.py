@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """buzzcut — find and cut API keys AI coding agents left in their logs.
 
-Reads Claude Code (~/.claude/projects) and Codex (~/.codex) logs. Codex is
-cleaned with same-length masks, only while no process holds its files.
+Reads Claude Code (~/.claude: transcripts, copies of the files the agent
+edited, prompt history) and Codex (~/.codex) logs. Codex is cleaned with
+same-length masks, only while no process holds its files.
 
   buzzcut scan            what is in the logs (read-only)
   buzzcut check --yes     which of those keys still work (network)
@@ -20,13 +21,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cleaner import clean_file, clean_sqlite        # noqa: E402
 from detect import find_secrets                     # noqa: E402
 from liveness import DEAD, LIVE, MANUAL, check_key  # noqa: E402
-from scanner import (AGENT_LABEL, HOME, MIN_LINE, codex_session_id, log_files, mask,  # noqa: E402
+from scanner import (AGENT_LABEL, FILE_HISTORY, HOME, MIN_LINE, codex_session_id, log_files, mask,  # noqa: E402
                      maybe_secret, read_lines, scan, shorten_projects)
 
 KIND_LABEL = {
     "openai": "OpenAI", "anthropic": "Anthropic", "github": "GitHub PAT",
     "aws": "AWS", "google": "Google API", "slack": "Slack",
-    "telegram": "Telegram", "private_key": "private key",
+    "telegram": "Telegram", "stripe": "Stripe", "private_key": "private key",
     "jwt": "JWT", "url_credentials": "URL credentials", "env_secret": "ENV secret",
 }
 
@@ -185,7 +186,7 @@ def cmd_clean(args):
     # Бэкап повторяет путь от домашнего каталога: .claude/projects/…, .codex/…
     backup = args.backup or os.path.join(HOME, ".buzzcut-backup")
     base = args.root or HOME
-    total, touched = 0, 0
+    total, touched, copies = 0, 0, 0
 
     def tally(n):
         nonlocal total, touched
@@ -194,7 +195,9 @@ def cmd_clean(args):
             touched += 1
 
     for path in claude:
-        tally(clean_file(path, backup_dir=backup, dry_run=args.dry_run, root=base))
+        n = clean_file(path, backup_dir=backup, dry_run=args.dry_run, root=base)
+        tally(n)
+        copies += bool(n) and os.sep + FILE_HISTORY + os.sep in path
 
     codex = codex_logs + codex_dbs
     busy = _codex_busy(codex) if codex and not args.dry_run else []
@@ -209,6 +212,9 @@ def cmd_clean(args):
 
     verb = "would cut" if args.dry_run else "cut"
     print(f"\n  {verb} {total} occurrences in {touched} files")
+    if copies:
+        print(f"  {copies} of them are copies Claude Code keeps to undo edits. Undoing")
+        print("  an old edit now brings that file back with the keys cut out.")
     if args.dry_run:
         print("  Dry run. Drop --dry-run to apply.\n")
     elif total:

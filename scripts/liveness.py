@@ -5,7 +5,8 @@
 
   · запускается только по явному согласию (`buzzcut check --yes`);
   · ключ уходит ровно одному адресату — его собственному провайдеру;
-  · используются только read-only эндпоинты (список моделей, профиль);
+  · используются только read-only эндпоинты (список моделей, профиль,
+    баланс, getMe);
   · никакой телеметрии, никаких третьих сторон.
 
 Смысл в том, что 1223 совпадения и «три ключа, которыми можно
@@ -31,12 +32,16 @@ PROBES = {
                           "Accept": "application/vnd.github+json"}),
     "slack": ("https://slack.com/api/auth.test",
               lambda k: {"Authorization": f"Bearer {k}"}),
+    "stripe": ("https://api.stripe.com/v1/balance",
+               lambda k: {"Authorization": f"Bearer {k}"}),
+    # у Telegram токен — часть адреса
+    "telegram": (lambda k: f"https://api.telegram.org/bot{k}/getMe",
+                 lambda k: {}),
 }
 
 # У этих проверка либо требует подписи запроса, либо означает коннект
 # к боевой инфраструктуре пользователя. Решает человек.
-MANUAL_KINDS = {"aws", "google", "telegram", "private_key", "url_credentials",
-                "env_secret", "jwt"}
+MANUAL_KINDS = {"aws", "google", "private_key", "url_credentials", "env_secret", "jwt"}
 
 
 def check_key(kind, value):
@@ -45,10 +50,11 @@ def check_key(kind, value):
         return MANUAL
 
     url, headers = PROBES[kind]
+    url = url(value) if callable(url) else url
     req = urllib.request.Request(url, headers=headers(value), method="GET")
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            if kind == "slack":
+            if kind in ("slack", "telegram"):
                 # Slack отвечает 200 и на протухший токен — смотрим тело
                 body = json.loads(resp.read(4096) or b"{}")
                 return LIVE if body.get("ok") else DEAD

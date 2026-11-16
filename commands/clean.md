@@ -14,6 +14,8 @@ Arguments, if the user asked to limit the scope:
 
 Codex logs and the copies in Codex's databases are cleaned with masks of the same length, and only while no process holds them. If clean says Codex is running, tell the user to quit Codex completely and run it again.
 
+If clean says some of the files were copies Claude Code keeps to undo edits, pass that on: undoing an old edit now brings the file back with the keys cut out, and the originals are in the backup.
+
 The backup still holds the keys: tell the user to delete it once they've checked that everything works.
 
 What the user needs to hear: cleaning removes the values from the history, but it **does not undo the leak**. A key that reached a transcript should be treated as compromised and rotated. `/buzzcut:check` tells you which ones still matter.

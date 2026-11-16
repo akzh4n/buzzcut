@@ -30,6 +30,7 @@ FAKE = {
     "aws":       _fake("AKI" + "A", "IOSFODNN7EXAMPLE"),
     "google":    _fake("AIz" + "a", "SyB1k2M9pQ7rT4vX8zC3nF6hJ0lW5yA2bE"),
     "slack":     _fake("xox" + "b-", "2451234567-2451234567-AbCdEfGhIjKlMnOp"),
+    "stripe":    _fake("sk_" + "live_", "51HqZ7tRvKeq7xK2mZp9vLbT4dRfA8sY"),
     "jwt":       _fake("eyJhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiIxMjM0NTY3ODkwIn0.",
                        "dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"),
 }
@@ -61,6 +62,16 @@ class TestProviderTokens:
 
     def test_slack_bot_token(self):
         assert kinds(FAKE["slack"]) == ["slack"]
+
+    def test_stripe_live_key_in_code(self):
+        # не в .env, а прямо в коде: здесь имя переменной не помогает
+        assert kinds(f"stripe.api_key = '{FAKE['stripe']}'") == ["stripe"]
+
+    def test_stripe_restricted_live_key(self):
+        assert kinds("rk_" + "live_" + "51HqZ7tRvKeq7xK2mZp9vLbT4dRfA8sY") == ["stripe"]
+
+    def test_stripe_test_key_moves_no_money(self):
+        assert kinds("stripe.api_key = 'sk_" + "test_" + "51HqZ7tRvKeq7xK2mZp9vLbT4dRfA8sY'") == []
 
     def test_private_key_header(self):
         assert kinds("-----BEGIN RSA PRIVATE KEY-----\nMIIEow...") == ["private_key"]

@@ -23,6 +23,8 @@ PROVIDER_PATTERNS = [
     ("aws",         re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")),
     ("google",      re.compile(r"\bAIza[A-Za-z0-9_-]{30,}")),
     ("slack",       re.compile(r"\bxox[bpaso]-[A-Za-z0-9-]{16,}")),
+    # только боевые: тестовый ключ денег не двигает
+    ("stripe",      re.compile(r"\b[sr]k_live_[A-Za-z0-9]{20,}")),
     ("telegram",    re.compile(r"\b\d{8,10}:AA[A-Za-z0-9_-]{30,}")),
     ("private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
 ]

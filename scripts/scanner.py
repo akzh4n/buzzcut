@@ -27,13 +27,17 @@ CODEX_FILES = (".codex/history.jsonl",)  # история промптов
 CODEX_DBS = (".codex/thread_history_*.sqlite", ".codex/logs_*.sqlite")
 AGENT_LABEL = {"claude": "Claude Code", "codex": "Codex"}
 
+# Копии файлов, которые правил агент: из них Claude Code откатывает правки.
+# Агент правил .env — копия .env с ключами лежит здесь.
+FILE_HISTORY = os.path.join(".claude", "file-history")
+
 # Предварительный отсев: одна альтернатива вместо одиннадцати проходов по
 # строке. Обязан быть строго ШИРЕ детектора — строка, которую он отбросил,
 # уже никогда не будет проверена, и оптимизация превратится в тихий пропуск.
 # Инвариант закреплён в tests/test_scanner.py::TestPrefilter.
 PREFILTER = re.compile(
     r"[A-Z][A-Z0-9_]{2,}\s*=|sk-|gh[pousr]_|github_pat_|AKIA|ASIA|AIza|"
-    r"xox[bpaso]-|eyJ|://|PRIVATE KEY|:AA"
+    r"xox[bpaso]-|[sr]k_live_|eyJ|://|PRIVATE KEY|:AA"
 )
 
 # Короче этого не бывает даже самый компактный секрет вместе с обрамлением.
@@ -79,7 +83,15 @@ def log_files(root=None, home=None):
         return [("claude", p, project_of(p, root)) for p in transcript_paths(root)]
     home = home or HOME
     claude = os.path.join(home, ".claude", "projects")
-    out = [("claude", p, project_of(p, claude)) for p in transcript_paths(claude)]
+    transcripts = transcript_paths(claude)
+    out = [("claude", p, project_of(p, claude)) for p in transcripts]
+    # Папка копий названа id сессии, транскрипт тоже: так копия знает свой проект.
+    session_project = {os.path.basename(p)[:-len(".jsonl")]: project_of(p, claude) for p in transcripts}
+    for p in sorted(glob.glob(os.path.join(home, FILE_HISTORY, "*", "*"))):
+        if os.path.isfile(p):
+            sid = os.path.basename(os.path.dirname(p))
+            out.append(("claude", p, session_project.get(sid, "claude file backups")))
+    out += [("claude", p, "claude prompts") for p in glob.glob(os.path.join(home, ".claude", "history.jsonl"))]
     for d in CODEX_DIRS:
         for p in sorted(glob.glob(os.path.join(home, d, "**", "*.jsonl"), recursive=True)):
             out.append(("codex", p, _codex_project(p)))
@@ -135,7 +147,7 @@ def read_lines(path):
 
 # Префиксы формата публичны: `sk-proj-` говорит, чей это ключ, но не сам ключ.
 PUBLIC_FORMAT = re.compile(
-    r"^(?:sk-ant-[a-z]+\d*-|sk-proj-|sk-|gh[pousr]_|github_pat_|AKIA|ASIA|AIza|xox[bpaso]-)")
+    r"^(?:sk-ant-[a-z]+\d*-|sk-proj-|sk-|gh[pousr]_|github_pat_|AKIA|ASIA|AIza|xox[bpaso]-|[sr]k_live_)")
 
 
 def mask(value):

@@ -1,6 +1,6 @@
 {
   "name": "buzzcut",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Finds API keys coding agents left in their logs (Claude Code, Codex), tells you which still work, cuts them out, and redacts Claude Code tool output before the model sees it.",
   "author": {
     "name": "akzh4n"
